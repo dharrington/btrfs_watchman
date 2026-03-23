@@ -4,7 +4,7 @@ set -e
 # If we have Cargo.toml, build the artifacts
 if [ -f "Cargo.toml" ]; then
     echo "Building release artifacts..."
-    cargo build --release
+    cargo build --release --features debug_logging
     BIN_DIR="target/release"
     WATCHMAN_BIN="$BIN_DIR/watchman_server"
 elif [ -d "bin" ]; then

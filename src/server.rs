@@ -249,7 +249,7 @@ pub async fn handle_client(
 
                                             files.push(Value::Utf8String(file_to_report));
                                         }
-                                        debug_log!("Returning files: {:?}", files);
+                                        debug_log!("Returning files: {:?}...", &files[0..std::cmp::min(10, files.len())]);
                                     }
                                     Err(e) => {
                                         debug_log!("Diff failed: {}", e);
