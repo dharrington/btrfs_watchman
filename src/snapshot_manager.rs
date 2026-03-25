@@ -1,15 +1,11 @@
 use crate::debug_log;
 use anyhow::{Context, Result};
-use process_control::ChildExt;
-use process_control::Control;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub struct SnapshotManager {
     btrfs_diff_bin: PathBuf,
 }
-
-const DIFF_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
 
 impl SnapshotManager {
     pub fn new() -> Result<Self> {
@@ -99,30 +95,18 @@ impl SnapshotManager {
             old_snap.display(),
             new_snap.display()
         );
-        let proc = Command::new("sudo")
+        let output = Command::new("sudo")
             .arg("-n")
             .arg(&self.btrfs_diff_bin)
             .arg("diff")
             .arg(old_snap)
             .arg(new_snap)
             .stderr(std::process::Stdio::inherit())
-            .spawn()?;
-        let output = proc
-            .controlled_with_output()
-            .time_limit(DIFF_TIMEOUT)
-            .terminate_for_timeout()
-            .wait();
+            .output()?;
 
-        let output = match output {
-            Ok(None) => anyhow::bail!("Timed out diffing snapshots"),
-            Ok(Some(output)) => {
-                if !output.status.success() {
-                    anyhow::bail!("Failed to diff snapshots");
-                }
-                output
-            }
-            Err(e) => anyhow::bail!("Failed to diff snapshots: {}", e),
-        };
+        if !output.status.success() {
+            anyhow::bail!("Failed to diff snapshots");
+        }
 
         let output_str = String::from_utf8_lossy(&output.stdout);
         let files: Vec<String> = output_str
