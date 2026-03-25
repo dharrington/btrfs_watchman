@@ -1,6 +1,6 @@
 use serde::Serialize;
-use std::path::PathBuf;
 use serde_bser::value::Value;
+use std::path::PathBuf;
 
 #[derive(Serialize)]
 pub struct ErrorResponse {

@@ -74,8 +74,17 @@ pub fn parse_expr(expr: &Value) -> CompiledExpr {
                         }
 
                         let names = match arr.get(1) {
-                            Some(Value::Array(n)) => n.iter().filter_map(|v| extract_string(Some(v))).collect::<Vec<_>>(),
-                            Some(val) => if let Some(s) = extract_string(Some(val)) { vec![s] } else { vec![] },
+                            Some(Value::Array(n)) => n
+                                .iter()
+                                .filter_map(|v| extract_string(Some(v)))
+                                .collect::<Vec<_>>(),
+                            Some(val) => {
+                                if let Some(s) = extract_string(Some(val)) {
+                                    vec![s]
+                                } else {
+                                    vec![]
+                                }
+                            }
                             None => vec![],
                         };
 
@@ -120,10 +129,16 @@ impl CompiledExpr {
                 }
                 true
             }
-            CompiledExpr::DirName { dir, starts_with, contains } => {
-                path == dir || path.starts_with(starts_with) || path.contains(contains)
-            }
-            CompiledExpr::Name { names, starts_withs, is_wholename } => {
+            CompiledExpr::DirName {
+                dir,
+                starts_with,
+                contains,
+            } => path == dir || path.starts_with(starts_with) || path.contains(contains),
+            CompiledExpr::Name {
+                names,
+                starts_withs,
+                is_wholename,
+            } => {
                 if *is_wholename {
                     for i in 0..names.len() {
                         if path == &names[i] || path.starts_with(&starts_withs[i]) {
@@ -161,10 +176,7 @@ mod tests {
 
     #[test]
     fn test_parse_and_evaluate_dirname() {
-        let ast = build_array(vec![
-            build_str("dirname"),
-            build_str(".git"),
-        ]);
+        let ast = build_array(vec![build_str("dirname"), build_str(".git")]);
         let compiled = parse_expr(&ast);
         assert!(compiled.evaluate(".git"));
         assert!(compiled.evaluate(".git/config"));
@@ -204,7 +216,7 @@ mod tests {
                 build_str("anyof"),
                 build_array(vec![build_str("dirname"), build_str(".git")]),
                 build_array(vec![build_str("dirname"), build_str(".jj")]),
-            ])
+            ]),
         ]);
         let compiled = parse_expr(&ast);
         assert!(!compiled.evaluate(".git/config"));
@@ -215,10 +227,7 @@ mod tests {
     #[test]
     fn test_unsupported_expressions_fallback_to_true() {
         // e.g. ["future_op", "args"]
-        let ast = build_array(vec![
-            build_str("future_op"),
-            build_str("some_arg"),
-        ]);
+        let ast = build_array(vec![build_str("future_op"), build_str("some_arg")]);
         let compiled = parse_expr(&ast);
         assert!(compiled.evaluate("any/random/file.txt"));
         assert!(compiled.evaluate(".jj"));

@@ -3,8 +3,6 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
 };
 
-
-
 #[derive(Debug, PartialEq)]
 enum ParsedPath<'a> {
     Raw(&'a str),
@@ -262,7 +260,7 @@ impl<W: Write> EventWriter<W> {
                         BtrfsEventType::Rmdir => {
                             self.file_rmdir(p_str);
                         }
-                        BtrfsEventType::Unlink=> {
+                        BtrfsEventType::Unlink => {
                             self.file_removed(p_str);
                         }
                         _ => {
@@ -292,57 +290,73 @@ impl<W: Write> EventWriter<W> {
 
     fn file_new(&mut self, path: ParsedPath) {
         // Ignore if already present.
-        self.file_states.entry(path.to_string()).or_insert(FileState {
+        self.file_states
+            .entry(path.to_string())
+            .or_insert(FileState {
                 created: true,
                 modified: false,
                 removed: false,
             });
-        }
+    }
     fn file_modified(&mut self, path: ParsedPath) {
         match self.file_states.get_mut(path.as_str()) {
             Some(state) => {
                 state.modified = true;
             }
             None => {
-                self.file_states.insert(path.to_string(), FileState {
-                    created: false,
-                    modified: true,
-                    removed: false,
-                });
+                self.file_states.insert(
+                    path.to_string(),
+                    FileState {
+                        created: false,
+                        modified: true,
+                        removed: false,
+                    },
+                );
             }
         }
     }
     fn file_rmdir(&mut self, path: ParsedPath) {
-       // Like file_removed, but we need to check for any files within the directory that were created and remove them.
-       match self.file_states.get_mut(path.as_str()) {
-        Some(state) => {    
-            if state.created {
-                self.file_states.remove(path.as_str());
-            } else {
-                state.removed = true;
+        // Like file_removed, but we need to check for any files within the directory that were created and remove them.
+        match self.file_states.get_mut(path.as_str()) {
+            Some(state) => {
+                if state.created {
+                    self.file_states.remove(path.as_str());
+                } else {
+                    state.removed = true;
+                    return;
+                }
+            }
+            None => {
+                self.file_states.insert(
+                    path.to_string(),
+                    FileState {
+                        created: false,
+                        modified: false,
+                        removed: true,
+                    },
+                );
                 return;
             }
+        };
+        // Remove all files within the directory that were created.
+        // we should be able to use lower bound / upper bound
+        let prefix = format!("{}/", path.as_str());
+        let prefix_end = format!("{}{}", path.as_str(), (('/' as u8) + 1) as char);
+        let keys_to_remove = self
+            .file_states
+            .range(prefix..prefix_end)
+            .into_iter()
+            .map(|(k, _v)| k.to_string())
+            .collect::<Vec<_>>();
+        for key in keys_to_remove {
+            self.file_states.remove(&key);
         }
-        None => {
-            self.file_states.insert(path.to_string(), FileState {
-                created: false,
-                modified: false,
-                removed: true,
-            });
-            return;
-        }
-       };
-       // Remove all files within the directory that were created.
-       // we should be able to use lower bound / upper bound
-       let prefix = format!("{}/", path.as_str());
-       let prefix_end = format!("{}{}", path.as_str(), (('/' as u8) + 1) as char);
-       let keys_to_remove = self.file_states.range(prefix..prefix_end).into_iter().map(|(k,_v)| k.to_string()).collect::<Vec<_>>();
-       for key in keys_to_remove {
-           self.file_states.remove(&key);
-       }
     }
     fn file_removed(&mut self, path: ParsedPath) {
-        let state = self.file_states.entry(path.to_string()).or_insert(FileState {
+        let state = self
+            .file_states
+            .entry(path.to_string())
+            .or_insert(FileState {
                 created: false,
                 modified: false,
                 removed: false,
@@ -389,20 +403,28 @@ fn process_buffer<W: Write>(buffer: &mut BufReader<impl Read>, output: &mut W) {
 
 fn is_valid_snapshot_path(path_str: &str) -> bool {
     let path = std::path::Path::new(path_str);
-    
+
     // Reject any explicit relative traversal
-    if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if path
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return false;
     }
 
     let parent_path = path.parent().unwrap_or(std::path::Path::new(""));
     // Canonicalize the parent to ensure they aren't using symlinks to escape
-    let canon_parent = std::fs::canonicalize(parent_path).unwrap_or_else(|_| parent_path.to_path_buf());
-    
-    let grandparent = canon_parent.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str());
+    let canon_parent =
+        std::fs::canonicalize(parent_path).unwrap_or_else(|_| parent_path.to_path_buf());
+
+    let grandparent = canon_parent
+        .parent()
+        .and_then(|p| p.file_name())
+        .and_then(|n| n.to_str());
     let file_name = path.file_name().and_then(|n| n.to_str());
-    
-    grandparent == Some(".jj_watchman_snapshots") && file_name.map(|n| n.starts_with("snap_")).unwrap_or(false)
+
+    grandparent == Some(".jj_watchman_snapshots")
+        && file_name.map(|n| n.starts_with("snap_")).unwrap_or(false)
 }
 
 use std::os::unix::fs::MetadataExt;
@@ -446,7 +468,9 @@ fn print_usage() {
     eprintln!("      Find and delete all orphaned Watchman snapshots below the given directory.");
     eprintln!();
     eprintln!("Options:");
-    eprintln!("  --raw       Output the raw stream from `btrfs receive --dump` instead of parsed paths.");
+    eprintln!(
+        "  --raw       Output the raw stream from `btrfs receive --dump` instead of parsed paths."
+    );
     eprintln!("  -h, --help  Print this help message.");
 }
 
@@ -479,7 +503,9 @@ fn main() {
                 std::process::exit(1);
             }
             if !is_valid_snapshot_path(&args[3]) {
-                eprintln!("Error: destination must be inside a .jj_watchman_snapshots directory and start with snap_");
+                eprintln!(
+                    "Error: destination must be inside a .jj_watchman_snapshots directory and start with snap_"
+                );
                 std::process::exit(1);
             }
             let output = std::process::Command::new("btrfs")
@@ -490,9 +516,12 @@ fn main() {
                 .arg(&args[3])
                 .output()
                 .expect("Failed to run btrfs subvolume snapshot");
-            
+
             if !output.status.success() {
-                eprintln!("Failed to snapshot: {}", String::from_utf8_lossy(&output.stderr));
+                eprintln!(
+                    "Failed to snapshot: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 std::process::exit(1);
             }
         }
@@ -503,7 +532,9 @@ fn main() {
                 std::process::exit(1);
             }
             if !is_valid_snapshot_path(&args[2]) {
-                eprintln!("Error: path must be inside a .jj_watchman_snapshots directory and start with snap_");
+                eprintln!(
+                    "Error: path must be inside a .jj_watchman_snapshots directory and start with snap_"
+                );
                 std::process::exit(1);
             }
 
@@ -523,9 +554,12 @@ fn main() {
                 .arg(&args[2])
                 .output()
                 .expect("Failed to run btrfs subvolume delete");
-            
+
             if !output.status.success() {
-                eprintln!("Failed to delete subvolume: {}", String::from_utf8_lossy(&output.stderr));
+                eprintln!(
+                    "Failed to delete subvolume: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 std::process::exit(1);
             }
         }
@@ -536,11 +570,15 @@ fn main() {
                 std::process::exit(1);
             }
             let dir_path = std::path::Path::new(&args[2]);
-            let abs_path = std::fs::canonicalize(dir_path).unwrap_or_else(|_| dir_path.to_path_buf());
+            let abs_path =
+                std::fs::canonicalize(dir_path).unwrap_or_else(|_| dir_path.to_path_buf());
             if let Some(root) = find_subvolume_root(&abs_path) {
                 println!("{}", root.display());
             } else {
-                eprintln!("Error: could not find Btrfs subvolume root containing {}", abs_path.display());
+                eprintln!(
+                    "Error: could not find Btrfs subvolume root containing {}",
+                    abs_path.display()
+                );
                 std::process::exit(1);
             }
         }
@@ -558,20 +596,25 @@ fn main() {
                 .arg(&args[2])
                 .output()
                 .expect("Failed to run btrfs subvolume list");
-            
+
             if !output.status.success() {
-                eprintln!("Failed to list subvolumes: {}", String::from_utf8_lossy(&output.stderr));
+                eprintln!(
+                    "Failed to list subvolumes: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                );
                 std::process::exit(1);
             }
             let stdout = String::from_utf8_lossy(&output.stdout);
             for line in stdout.lines() {
                 if let Some(path_idx) = line.find("path ") {
                     let subvol_path = &line[path_idx + 5..];
-                    if subvol_path.contains(".jj_watchman_snapshots") && subvol_path.contains("/snap_") {
+                    if subvol_path.contains(".jj_watchman_snapshots")
+                        && subvol_path.contains("/snap_")
+                    {
                         let mut current = base_dir.to_path_buf();
                         let mut full_path = std::path::PathBuf::new();
                         let mut found = false;
-                        
+
                         // To map the topological btrfs path to our absolute path,
                         // we pop directories off our base_dir until we find a match for subvol_path.
                         // subvol_path is relative to the btrfs subvolume root, so one of the
@@ -585,25 +628,36 @@ fn main() {
                             }
                             current.pop();
                         }
-                            
-                            if found && is_valid_snapshot_path(&full_path.to_string_lossy()) {
-                                println!("Cleaning up old snapshot: {}", full_path.display());
-                                let _ = std::process::Command::new("btrfs")
-                                    .arg("property").arg("set").arg("-ts").arg(&full_path).arg("ro").arg("false")
-                                    .output();
-                                let del_out = std::process::Command::new("btrfs")
-                                    .arg("subvolume").arg("delete").arg(&full_path)
-                                    .output();
-                                if let Ok(del) = del_out {
-                                    if !del.status.success() {
-                                        eprintln!("Failed to delete {}: {}", full_path.display(), String::from_utf8_lossy(&del.stderr));
-                                    }
+
+                        if found && is_valid_snapshot_path(&full_path.to_string_lossy()) {
+                            println!("Cleaning up old snapshot: {}", full_path.display());
+                            let _ = std::process::Command::new("btrfs")
+                                .arg("property")
+                                .arg("set")
+                                .arg("-ts")
+                                .arg(&full_path)
+                                .arg("ro")
+                                .arg("false")
+                                .output();
+                            let del_out = std::process::Command::new("btrfs")
+                                .arg("subvolume")
+                                .arg("delete")
+                                .arg(&full_path)
+                                .output();
+                            if let Ok(del) = del_out {
+                                if !del.status.success() {
+                                    eprintln!(
+                                        "Failed to delete {}: {}",
+                                        full_path.display(),
+                                        String::from_utf8_lossy(&del.stderr)
+                                    );
                                 }
-                            } else if found {
-                                eprintln!("Found snapshot but it's not valid: {}", full_path.display());
-                            } else {
-                                eprintln!("Could not find snapshot for: {}", subvol_path);
                             }
+                        } else if found {
+                            eprintln!("Found snapshot but it's not valid: {}", full_path.display());
+                        } else {
+                            eprintln!("Could not find snapshot for: {}", subvol_path);
+                        }
                     }
                 }
             }
@@ -634,7 +688,7 @@ fn main() {
                 .stdout(std::process::Stdio::piped())
                 .spawn()
                 .expect("Failed to run btrfs receive");
-            
+
             let mut reader = std::io::BufReader::new(receive_cmd.stdout.unwrap());
             if raw_output {
                 std::io::copy(&mut reader, &mut std::io::stdout()).unwrap();

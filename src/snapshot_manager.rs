@@ -1,7 +1,7 @@
+use crate::debug_log;
 use anyhow::{Context, Result};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use crate::debug_log;
 
 pub struct SnapshotManager {
     btrfs_diff_bin: PathBuf,
@@ -27,12 +27,15 @@ impl SnapshotManager {
         if !output.status.success() {
             anyhow::bail!("Failed to get subvolume root for {}", path.display());
         }
-        
+
         // We now expect stdout to cleanly print out the absolute path to the subvolume root
         let stdout = String::from_utf8_lossy(&output.stdout);
         let root_str = stdout.trim();
         if root_str.is_empty() {
-            anyhow::bail!("btrfs_diff show-root returned empty string for {}", path.display());
+            anyhow::bail!(
+                "btrfs_diff show-root returned empty string for {}",
+                path.display()
+            );
         }
         Ok(PathBuf::from(root_str))
     }
@@ -54,7 +57,7 @@ impl SnapshotManager {
     pub fn create_snapshot(&self, watch_root: &Path, snap_id: &str) -> Result<PathBuf> {
         let snap_dir = self.ensure_snapshot_dir(watch_root)?;
         let snap_path = snap_dir.join(snap_id);
-        
+
         let output = Command::new("sudo")
             .arg("-n")
             .arg(&self.btrfs_diff_bin)
@@ -87,7 +90,11 @@ impl SnapshotManager {
     }
 
     pub fn diff_snapshots(&self, old_snap: &Path, new_snap: &Path) -> Result<Vec<String>> {
-        debug_log!("Spawning btrfs_diff diff {}, {}", old_snap.display(), new_snap.display());
+        debug_log!(
+            "Spawning btrfs_diff diff {}, {}",
+            old_snap.display(),
+            new_snap.display()
+        );
         let output = Command::new("sudo")
             .arg("-n")
             .arg(&self.btrfs_diff_bin)
@@ -102,7 +109,11 @@ impl SnapshotManager {
         }
 
         let output_str = String::from_utf8_lossy(&output.stdout);
-        let files: Vec<String> = output_str.lines().filter(|s| !s.is_empty()).map(|s| s.to_string()).collect();
+        let files: Vec<String> = output_str
+            .lines()
+            .filter(|s| !s.is_empty())
+            .map(|s| s.to_string())
+            .collect();
         Ok(files)
     }
 }

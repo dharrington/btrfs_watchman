@@ -1,7 +1,8 @@
+mod evaluator;
 mod server;
 mod snapshot_manager;
 mod watchman_protocol;
-mod evaluator;#[macro_export]
+#[macro_export]
 macro_rules! debug_log {
     ($($arg:tt)*) => {
         #[cfg(feature = "debug_logging")]
@@ -13,7 +14,7 @@ use anyhow::Result;
 use std::sync::Arc;
 use tokio::net::UnixListener;
 
-use server::{handle_client, ServerState};
+use server::{ServerState, handle_client};
 use watchman_protocol::GetSockNameResponse;
 
 fn print_usage() {
@@ -26,13 +27,15 @@ fn print_usage() {
     eprintln!("  get-sockname               Print the socket path and exit");
     eprintln!("  -h, --help                 Print this help message");
     eprintln!();
-    eprintln!("Socket path defaults to a temp file (e.g. /tmp/btrfs_watchman.sock) if not specified.");
+    eprintln!(
+        "Socket path defaults to a temp file (e.g. /tmp/btrfs_watchman.sock) if not specified."
+    );
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
-    
+
     let mut output_encoding = "json";
     let mut command = None;
     let user = std::env::var("USER").unwrap_or_else(|_| "unknown".to_string());
@@ -77,14 +80,17 @@ async fn main() -> Result<()> {
         } else {
             std::env::current_dir()?.join(&socket_path)
         };
-        
+
         // Try starting the server if it's not already running
-        if tokio::net::UnixStream::connect(&abs_socket_path).await.is_err() {
+        if tokio::net::UnixStream::connect(&abs_socket_path)
+            .await
+            .is_err()
+        {
             let log_file = std::fs::OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open("/tmp/btrfs_watchman.log")?;
-                
+
             let exe = std::env::current_exe()?;
             std::process::Command::new(exe)
                 .arg(&abs_socket_path)

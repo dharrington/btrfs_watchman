@@ -7,9 +7,9 @@ use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
+use crate::debug_log;
 use crate::snapshot_manager::SnapshotManager;
 use crate::watchman_protocol::*;
-use crate::debug_log;
 
 pub struct ServerState {
     pub manager: SnapshotManager,
@@ -44,7 +44,10 @@ impl ServerState {
     }
 }
 
-pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<ServerState>) -> Result<()> {
+pub async fn handle_client(
+    mut socket: tokio::net::UnixStream,
+    state: Arc<ServerState>,
+) -> Result<()> {
     let mut buf = [0u8; 8192]; // Allow slightly larger buffer just in case
     loop {
         let n = socket.read(&mut buf).await?;
@@ -82,7 +85,8 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                 cached.clone()
                             } else {
                                 drop(watches_lock);
-                                let watch_root = match state.manager.get_subvolume_root(&watch_path) {
+                                let watch_root = match state.manager.get_subvolume_root(&watch_path)
+                                {
                                     Ok(root) => root,
                                     Err(e) => {
                                         let response = ErrorResponse {
@@ -93,11 +97,17 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                         continue;
                                     }
                                 };
-                                
-                                let relative_path = watch_path.strip_prefix(&watch_root).ok().map(|p| p.to_path_buf());
+
+                                let relative_path = watch_path
+                                    .strip_prefix(&watch_root)
+                                    .ok()
+                                    .map(|p| p.to_path_buf());
 
                                 let mut watches_lock_mut = state.watches.lock().await;
-                                watches_lock_mut.insert(watch_path.clone(), (watch_root.clone(), relative_path.clone()));
+                                watches_lock_mut.insert(
+                                    watch_path.clone(),
+                                    (watch_root.clone(), relative_path.clone()),
+                                );
                                 (watch_root, relative_path)
                             }
                         };
@@ -120,7 +130,7 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                             let mut since_clock = None;
                             let mut relative_root = None;
                             let mut expression = None;
-                            
+
                             if let Some(Value::Object(opts)) = query_args {
                                 if let Some(Value::Utf8String(since)) = opts.get("since") {
                                     since_clock = Some(since.clone());
@@ -130,8 +140,13 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                 }
                                 expression = opts.get("expression").cloned();
                             }
-                            let compiled_expr = expression.as_ref().map(|e| crate::evaluator::parse_expr(e));
-                            debug_log!("Received query for {:?} with since_clock: {:?}", watch_root, since_clock);
+                            let compiled_expr =
+                                expression.as_ref().map(|e| crate::evaluator::parse_expr(e));
+                            debug_log!(
+                                "Received query for {:?} with since_clock: {:?}",
+                                watch_root,
+                                since_clock
+                            );
 
                             let watchman_config = load_watchman_config(&watch_root);
 
@@ -139,13 +154,14 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                             #[allow(unused_variables)]
                             let t_start_snap = std::time::Instant::now();
                             let new_snap_id = format!("snap_{}", Uuid::new_v4().simple());
-                            let new_snap_path = match state.manager.create_snapshot(&watch_root, &new_snap_id) {
-                                Ok(p) => p,
-                                Err(e) => {
-                                    eprintln!("Failed to create snapshot: {}", e);
-                                    continue;
-                                }
-                            };
+                            let new_snap_path =
+                                match state.manager.create_snapshot(&watch_root, &new_snap_id) {
+                                    Ok(p) => p,
+                                    Err(e) => {
+                                        eprintln!("Failed to create snapshot: {}", e);
+                                        continue;
+                                    }
+                                };
                             debug_log!("Snapshot creation took: {:?}", t_start_snap.elapsed());
                             let clock = format!("btrfs:{}", new_snap_id);
 
@@ -157,17 +173,21 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                             let diff_success = (|| -> Option<()> {
                                 let old_clock = since_clock.as_ref()?;
                                 let old_snap_id = old_clock.strip_prefix("btrfs:")?;
-                                
+
                                 if !old_snap_id.starts_with("snap_") {
                                     return None;
                                 }
-                                
+
                                 // Sanity check to prevent path traversal
                                 if old_snap_id.contains('/') || old_snap_id.contains('\\') {
                                     return None;
                                 }
 
-                                let old_snap_path = state.manager.ensure_snapshot_dir(&watch_root).ok()?.join(old_snap_id);
+                                let old_snap_path = state
+                                    .manager
+                                    .ensure_snapshot_dir(&watch_root)
+                                    .ok()?
+                                    .join(old_snap_id);
                                 if !old_snap_path.exists() {
                                     return None; // Missing snapshot, will trigger fresh instance
                                 }
@@ -176,13 +196,20 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                 let t_start_diff = std::time::Instant::now();
                                 match state.manager.diff_snapshots(&old_snap_path, &new_snap_path) {
                                     Ok(diff_files) => {
-                                        debug_log!("Diff took: {:?} for {} changed files.", t_start_diff.elapsed(), diff_files.len());
+                                        debug_log!(
+                                            "Diff took: {:?} for {} changed files.",
+                                            t_start_diff.elapsed(),
+                                            diff_files.len()
+                                        );
                                         for file in diff_files {
                                             let mut file_to_report = file.clone();
 
                                             let mut ignored = false;
                                             for ignored_dir in &watchman_config.ignore_dirs {
-                                                if file == *ignored_dir || file.starts_with(&format!("{}/", ignored_dir)) {
+                                                if file == *ignored_dir
+                                                    || file
+                                                        .starts_with(&format!("{}/", ignored_dir))
+                                                {
                                                     ignored = true;
                                                     break;
                                                 }
@@ -194,7 +221,8 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                             if let Some(ref rr) = relative_root {
                                                 let prefix = format!("{}/", rr);
                                                 if file.starts_with(&prefix) {
-                                                    file_to_report = file[prefix.len()..].to_string();
+                                                    file_to_report =
+                                                        file[prefix.len()..].to_string();
                                                 } else if file == *rr {
                                                     continue;
                                                 } else {
@@ -216,15 +244,17 @@ pub async fn handle_client(mut socket: tokio::net::UnixStream, state: Arc<Server
                                         eprintln!("Diff failed: {}", e);
                                     }
                                 }
-                                
+
                                 // Cleanup old snap
                                 let state_clone = state.clone();
                                 tokio::task::spawn_blocking(move || {
-                                    if let Err(e) = state_clone.manager.delete_snapshot(&old_snap_path) {
+                                    if let Err(e) =
+                                        state_clone.manager.delete_snapshot(&old_snap_path)
+                                    {
                                         eprintln!("Failed to delete old snap: {}", e);
                                     }
                                 });
-                                
+
                                 Some(())
                             })();
 
