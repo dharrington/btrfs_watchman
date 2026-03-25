@@ -105,7 +105,6 @@ fn test_split_once_by_unescaped_space2() {
 enum BtrfsEventType {
     Mkfile,
     Write,
-    UpdateExtent,
     Unlink,
     Rmdir,
     Rename,
@@ -138,7 +137,7 @@ fn parse_event_params<'a>(
 fn parse_event<'a>(line: &'a str) -> Option<BtrfsEvent<'a>> {
     let (cmd, rest) = line.split_once(' ')?;
     match cmd {
-        "mkfile" => {
+        "mkdir" | "mkfile" => {
             let (path, _rest) = parse_event_params(rest, false)?;
             Some(BtrfsEvent {
                 event_type: BtrfsEventType::Mkfile,
@@ -146,18 +145,11 @@ fn parse_event<'a>(line: &'a str) -> Option<BtrfsEvent<'a>> {
                 dest: None,
             })
         }
-        "write" => {
+        "clone" | "truncate" | "fallocate" | "write" | "encoded_write" | "chmod"
+        | "update_extent" => {
             let (path, _rest) = parse_event_params(rest, false)?;
             Some(BtrfsEvent {
                 event_type: BtrfsEventType::Write,
-                path,
-                dest: None,
-            })
-        }
-        "update_extent" => {
-            let (path, _rest) = parse_event_params(rest, false)?;
-            Some(BtrfsEvent {
-                event_type: BtrfsEventType::UpdateExtent,
                 path,
                 dest: None,
             })
