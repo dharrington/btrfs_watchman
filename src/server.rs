@@ -10,6 +10,7 @@ use uuid::Uuid;
 use crate::debug_log;
 use crate::snapshot_manager::SnapshotManager;
 use crate::watchman_protocol::*;
+const VERSION: &str = "btrfs-watchman-0.1.0";
 
 pub struct ServerState {
     pub manager: SnapshotManager,
@@ -65,7 +66,7 @@ pub async fn handle_client(
                 match cmd_name.as_str() {
                     "version" => {
                         let response = GenericResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                         };
                         send_response(&mut socket, response).await?;
                     }
@@ -90,7 +91,7 @@ pub async fn handle_client(
                                     Ok(root) => root,
                                     Err(e) => {
                                         let response = ErrorResponse {
-                                            version: "btrfs-watchman-0.1.0".to_string(),
+                                            version: VERSION.to_string(),
                                             error: format!("{}", e),
                                         };
                                         send_response(&mut socket, response).await?;
@@ -113,7 +114,7 @@ pub async fn handle_client(
                         };
 
                         let response = WatchProjectResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                             watch: watch_root,
                             watcher: "btrfs".to_string(),
                             relative_path,
@@ -267,7 +268,7 @@ pub async fn handle_client(
                             }
 
                             let response = QueryResultResponse {
-                                version: "btrfs-watchman-0.1.0".to_string(),
+                                version: VERSION.to_string(),
                                 is_fresh_instance,
                                 files: Some(files),
                                 clock,
@@ -277,14 +278,14 @@ pub async fn handle_client(
                         } else {
                             // Missing watch root in query
                             let response = GenericResponse {
-                                version: "btrfs-watchman-0.1.0".to_string(),
+                                version: VERSION.to_string(),
                             };
                             send_response(&mut socket, response).await?;
                         }
                     }
                     "trigger-list" => {
                         let response = TriggerListResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                             triggers: vec![],
                         };
                         send_response(&mut socket, response).await?;
@@ -297,7 +298,7 @@ pub async fn handle_client(
                             "unknown".to_string()
                         };
                         let response = TriggerDelResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                             deleted: true, // Mock success
                             trigger: trigger_name,
                         };
@@ -306,7 +307,7 @@ pub async fn handle_client(
                     }
                     "trigger" => {
                         let response = crate::watchman_protocol::ErrorResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                             error: "trigger registration is not implemented by btrfs-watchman. Set fsmonitor.watchman.register-snapshot-trigger = false in your jj config.".to_string(),
                         };
                         send_response(&mut socket, response).await?;
@@ -314,7 +315,7 @@ pub async fn handle_client(
                     }
                     _ => {
                         let response = GenericResponse {
-                            version: "btrfs-watchman-0.1.0".to_string(),
+                            version: VERSION.to_string(),
                         };
                         send_response(&mut socket, response).await?;
                         debug_log!("unknown cmd took: {:?}", t_start_cmd.elapsed());
