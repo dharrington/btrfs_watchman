@@ -12,10 +12,16 @@ use crate::snapshot_manager::SnapshotManager;
 use crate::watchman_protocol::*;
 const VERSION: &str = "btrfs-watchman-0.1.0";
 
+#[derive(Clone)]
+pub struct WatchState {
+    pub watch_root: PathBuf,
+    pub relative_path: Option<PathBuf>,
+}
+
 pub struct ServerState {
     pub manager: SnapshotManager,
     // Maps watch-project path -> (watch root, relative path)
-    pub watches: Mutex<HashMap<PathBuf, (PathBuf, Option<PathBuf>)>>,
+    pub watches: Mutex<HashMap<PathBuf, WatchState>>,
     // We could store known snapshots, or just parse them from the clock.
     // Clock format: "btrfs:<snap_uuid>"
 }
@@ -80,7 +86,10 @@ pub async fn handle_client(
                         let watch_path = std::fs::canonicalize(&watch_path).unwrap_or(watch_path);
                         debug_log!("Received watch-project requested path: {:?}", watch_path);
 
-                        let (watch_root, relative_path) = {
+                        let WatchState {
+                            watch_root,
+                            relative_path,
+                        } = {
                             let watches_lock = state.watches.lock().await;
                             if let Some(cached) = watches_lock.get(&watch_path) {
                                 cached.clone()
@@ -105,11 +114,12 @@ pub async fn handle_client(
                                     .map(|p| p.to_path_buf());
 
                                 let mut watches_lock_mut = state.watches.lock().await;
-                                watches_lock_mut.insert(
-                                    watch_path.clone(),
-                                    (watch_root.clone(), relative_path.clone()),
-                                );
-                                (watch_root, relative_path)
+                                let watch_state = WatchState {
+                                    watch_root: watch_root.clone(),
+                                    relative_path: relative_path.clone(),
+                                };
+                                watches_lock_mut.insert(watch_path.clone(), watch_state.clone());
+                                watch_state
                             }
                         };
 
@@ -159,7 +169,7 @@ pub async fn handle_client(
                                 match state.manager.create_snapshot(&watch_root, &new_snap_id) {
                                     Ok(p) => p,
                                     Err(e) => {
-                                        eprintln!("Failed to create snapshot: {}", e);
+                                        debug_log!("Failed to create snapshot: {}", e);
                                         continue;
                                     }
                                 };
@@ -242,7 +252,7 @@ pub async fn handle_client(
                                         debug_log!("Returning files: {:?}", files);
                                     }
                                     Err(e) => {
-                                        eprintln!("Diff failed: {}", e);
+                                        debug_log!("Diff failed: {}", e);
                                     }
                                 }
 
@@ -252,7 +262,7 @@ pub async fn handle_client(
                                     if let Err(e) =
                                         state_clone.manager.delete_snapshot(&old_snap_path)
                                     {
-                                        eprintln!("Failed to delete old snap: {}", e);
+                                        debug_log!("Failed to delete old snap: {}", e);
                                     }
                                 });
 
