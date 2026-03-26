@@ -47,7 +47,7 @@ sudo cat /etc/sudoers
 To tell `jj` to utilize `btrfs_watchman` for filesystem monitoring, you need to update your Jujutsu configuration for your repository:
 
 ```sh
-jj config set --repo fsmonitor.backend = "watchman"
+jj config set --repo fsmonitor.backend watchman
 jj config set --repo fsmonitor.watchman.register-snapshot-trigger false
 ```
 

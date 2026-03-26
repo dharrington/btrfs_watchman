@@ -1,3 +1,5 @@
 /target/
 /scratch/
 *.tar.gz
+/testing/*.img
+/testing/test_mnt
