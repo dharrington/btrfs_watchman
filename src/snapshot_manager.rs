@@ -5,6 +5,7 @@ use process_control::Control;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+#[derive(Clone)]
 pub struct SnapshotManager {
     btrfs_diff_bin: PathBuf,
 }
@@ -106,6 +107,7 @@ impl SnapshotManager {
             .arg(old_snap)
             .arg(new_snap)
             .stderr(std::process::Stdio::inherit())
+            .stdout(std::process::Stdio::piped())
             .spawn()?;
         let output = proc
             .controlled_with_output()

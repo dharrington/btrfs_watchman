@@ -50,6 +50,7 @@ jj config set --repo fsmonitor.watchman.register-snapshot-trigger false
 jj status
 
 echo "new line" >> src/snapshot_manager.rs
+echo "diff should show one file changed:"
 jj diff --name-only
 
 echo "See also watchman logs in: /tmp/btrfs_watchman.log"
